@@ -6,6 +6,7 @@ from email.message import EmailMessage
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
+from telegram.error import BadRequest
 
 # ---- Basic logging setup ----
 logging.basicConfig(
@@ -17,9 +18,9 @@ logging.basicConfig(
 TOKEN = os.environ.get("TOKEN")
 EMAIL_ADDRESS = os.environ.get("EMAIL_ADDRESS")
 EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
-TO_EMAIL = "isma3lawy89@gmail.com" # You can also make this an environment variable if you wish
+TO_EMAIL = "isma3lawy89@gmail.com"
 
-# ---- VALIDATE TOKEN ----
+# ---- Validate Token ----
 if not TOKEN:
     raise ValueError("Error: No TOKEN environment variable found. Please set it in Railway.")
 
@@ -29,7 +30,7 @@ user_data = {}
 # ---- Helper: Send email ----
 def send_email(user_id, name, phone, governorate):
     if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
-        logging.error("Email credentials (EMAIL_ADDRESS, EMAIL_PASSWORD) not set. Cannot send email.")
+        logging.error("Email credentials not set. Cannot send email.")
         return
 
     msg = EmailMessage()
@@ -65,12 +66,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "هنتابع مع بعض الكورس والمحاضرات الفترة الجاية ❤️\n\n"
         "اختار طريقة المتابعة 👇"
     )
-    await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=reply_markup)
+    # Ensure the message is actually sent
+    if update.message:
+        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=reply_markup)
 
 # ---- Button callback ----
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    
+    # --- SOLUTION 1: Gracefully handle the expired query error ---
+    try:
+        await query.answer()
+    except BadRequest as e:
+        if "Query is too old" in str(e):
+            logging.warning("CallbackQuery 'is too old' to be answered. Continuing...")
+        else:
+            raise e # Re-raise other BadRequest errors
+
     user_id = query.from_user.id
 
     if query.data == "form":
@@ -81,13 +93,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---- Message handler ----
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Standard check for an active conversation
     user_id = update.message.from_user.id
-    text = update.message.text
-
     if user_id not in user_data or user_data[user_id].get("step") is None:
         await update.message.reply_text("ابدأ المحادثة بكتابة /start 😊")
         return
 
+    text = update.message.text
     step = user_data[user_id]["step"]
 
     if step == "ask_name":
@@ -101,11 +113,12 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif step == "ask_governorate":
         user_data[user_id]["governorate"] = text
         data = user_data[user_id]
-        # Send email after collecting all info
+        
         send_email(user_id, data["name"], data["phone"], data["governorate"])
-        # Send links to user
+        
         FORM_LINK = "https://forms.gle/grkZJ94QsVXbDEab7"
         CHANNEL_LINK = "https://t.me/+eAJ8mUKydElhYTY0"
+        
         await update.message.reply_text(
             f"حلو جدًا 😍 املى الفورم ده وهيجيلك لينك قناة الكورس المجاني:\n\n{FORM_LINK}"
         )
@@ -115,22 +128,22 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "ومتنساش تعمل متابعة على كل السوشيال ميديا 😉❤️",
             parse_mode="Markdown"
         )
-        user_data[user_id]["step"] = "done"
+        
+        # End the conversation
+        user_data.pop(user_id, None)
 
 # ---- Main execution block ----
 def main():
     """Start the bot."""
-    # Create the Application
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # Add handlers
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
-    # Run the bot
-    logging.info("Starting bot polling...")
-    app.run_polling()
+    logging.info("Starting bot...")
+    # --- SOLUTION 2: Drop old updates on startup ---
+    app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
