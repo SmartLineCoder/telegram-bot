@@ -1,12 +1,10 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler
 from datetime import datetime
-import gspread
-
-
 import os
 import json
 from google.oauth2.service_account import Credentials
+import gspread
 
 # Load the JSON string from Railway env variable
 service_account_json_str = os.environ["SERVICE_ACCOUNT_JSON"]
@@ -14,14 +12,10 @@ service_account_json_str = os.environ["SERVICE_ACCOUNT_JSON"]
 # Convert it to a Python dict
 SERVICE_ACCOUNT_INFO = json.loads(service_account_json_str)
 # ---- Google Sheet setup ----
-SCOPE = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
+SCOPE = ["https://www.googleapis.com/auth/spreadsheets"]
 CREDS = Credentials.from_service_account_info(SERVICE_ACCOUNT_INFO, scopes=SCOPE)
 client = gspread.authorize(CREDS)
 sheet = client.open("Zyad Telegram Bot Responses").sheet1  # غير الاسم لو الشيت مختلف
-
 # ---- Telegram bot setup ----
 TOKEN = "ضع_التوكن_هنا"
 FORM_LINK = "https://forms.gle/grkZJ94QsVXbDEab7"
