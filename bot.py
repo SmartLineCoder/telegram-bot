@@ -13,11 +13,12 @@ service_account_json_str = os.environ["SERVICE_ACCOUNT_JSON"]
 
 # Convert it to a Python dict
 SERVICE_ACCOUNT_INFO = json.loads(service_account_json_str)
-
-SCOPE = ["https://www.googleapis.com/auth/spreadsheets"]
-CREDS = Credentials.from_service_account_info(SERVICE_ACCOUNT_INFO, scopes=SCOPE)
-
 # ---- Google Sheet setup ----
+SCOPE = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+CREDS = Credentials.from_service_account_info(SERVICE_ACCOUNT_INFO, scopes=SCOPE)
 client = gspread.authorize(CREDS)
 sheet = client.open("Zyad Telegram Bot Responses").sheet1  # غير الاسم لو الشيت مختلف
 
