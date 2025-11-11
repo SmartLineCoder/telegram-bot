@@ -7,7 +7,9 @@ import os
 
 # إعداد Google Sheets
 SCOPE = ["https://www.googleapis.com/auth/spreadsheets"]
-CREDS = Credentials.from_service_account_file("credentials.json", scopes=SCOPE)
+import json
+CREDS = Credentials.from_service_account_info(json.loads(os.environ["GOOGLE_CREDS"]), scopes=SCOPE)
+
 client = gspread.authorize(CREDS)
 sheet = client.open("Zyad Telegram Bot Responses").sheet1  # <-- اسم الشيت بالضبط
 
