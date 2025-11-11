@@ -2,29 +2,13 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler
 from datetime import datetime
 import gspread
+
+
+import os
+import json
 from google.oauth2.service_account import Credentials
 
-# ---- بيانات Google Service Account مباشرة داخل الكود ----
-SERVICE_ACCOUNT_INFO = {
-    "type": "service_account",
-    "project_id": "zyad-telegram-bot-responses",
-    "private_key_id": "f77ec5a0bdcfda20a88eb1e5d3545b4f809a57cd",
-    "private_key": """-----BEGIN PRIVATE KEY-----
-MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQCjiaQC/AG7hXo3
-6LujjKOHT8Xxc0n93xXUu2cp2XlWdzUK5hyG3yPw/CMZo+lSzFr6YbCvJvYwVC/A
-...
-GiDJU0gC1ZfjOTz0DrEos0k=
------END PRIVATE KEY-----""",
-    "client_email": "zeyadapi@zyad-telegram-bot-responses.iam.gserviceaccount.com",
-    "client_id": "102176397830018730236",
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/zeyadapi%40zyad-telegram-bot-responses.iam.gserviceaccount.com",
-    "universe_domain": "googleapis.com"
-}
-
-
+SERVICE_ACCOUNT_INFO = json.loads(os.environ["SERVICE_ACCOUNT_JSON"])
 SCOPE = ["https://www.googleapis.com/auth/spreadsheets"]
 CREDS = Credentials.from_service_account_info(SERVICE_ACCOUNT_INFO, scopes=SCOPE)
 
