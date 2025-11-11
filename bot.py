@@ -1,8 +1,10 @@
 import os
-import smtplib
 import logging
+import json
 from datetime import datetime
-from email.message import EmailMessage
+
+# Import gspread for Google Sheets integration
+import gspread
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
@@ -16,9 +18,6 @@ logging.basicConfig(
 
 # ---- Load Environment Variables ----
 TOKEN = os.environ.get("TOKEN")
-EMAIL_ADDRESS = os.environ.get("EMAIL_ADDRESS")
-EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
-TO_EMAIL = "isma3lawy89@gmail.com"
 
 # ---- Validate Token ----
 if not TOKEN:
@@ -27,30 +26,46 @@ if not TOKEN:
 # ---- User data storage ----
 user_data = {}
 
-# ---- Helper: Send email ----
-def send_email(user_id, name, phone, governorate):
-    if not EMAIL_ADDRESS or not EMAIL_PASSWORD:
-        logging.error("Email credentials not set. Cannot send email.")
-        return
-
-    msg = EmailMessage()
-    msg['Subject'] = f"New Telegram Bot Submission: {name}"
-    msg['From'] = EMAIL_ADDRESS
-    msg['To'] = TO_EMAIL
-    msg.set_content(
-        f"User ID: {user_id}\n"
-        f"Name: {name}\n"
-        f"Phone: {phone}\n"
-        f"Governorate: {governorate}\n"
-        f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
-    )
+# ---- Helper: Update Google Sheet ----
+def update_sheet(user_id, name, phone, governorate):
+    """
+    Connects to Google Sheets using service account credentials
+    and appends a new row with the user's data.
+    """
     try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
-            smtp.send_message(msg)
-            logging.info(f"Email sent successfully for user {name}")
+        # Load credentials from environment variable
+        creds_json_str = os.environ.get('GSPREAD_SERVICE_ACCOUNT_CREDS')
+        if not creds_json_str:
+            logging.error("GSPREAD_SERVICE_ACCOUNT_CREDS environment variable not found.")
+            return
+            
+        creds_dict = json.loads(creds_json_str)
+        
+        # Authorize and connect to Google Sheets
+        gc = gspread.service_account_from_dict(creds_dict)
+        
+        # Open the spreadsheet by its name
+        spreadsheet_name = "Zyad Telegram Bot Responses"
+        sh = gc.open(spreadsheet_name)
+        
+        # Select the first worksheet
+        worksheet = sh.sheet1
+        
+        # Prepare the data row
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        row_to_insert = [str(user_id), name, phone, governorate, timestamp]
+        
+        # Append the new row to the sheet
+        worksheet.append_row(row_to_insert, value_input_option='USER_ENTERED')
+        
+        logging.info(f"Successfully wrote data for user {name} to Google Sheet.")
+        
+    except gspread.exceptions.SpreadsheetNotFound:
+        logging.error(f"Error: Spreadsheet '{spreadsheet_name}' not found. "
+                      "Please check the name and ensure the service account has editor access.")
     except Exception as e:
-        logging.error(f"Error sending email: {e}")
+        logging.error(f"An unexpected error occurred while updating the Google Sheet: {e}")
+
 
 # ---- Start command ----
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -66,25 +81,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "هنتابع مع بعض الكورس والمحاضرات الفترة الجاية ❤️\n\n"
         "اختار طريقة المتابعة 👇"
     )
-    # Ensure the message is actually sent
     if update.message:
         await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=reply_markup)
 
 # ---- Button callback ----
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    
-    # --- SOLUTION 1: Gracefully handle the expired query error ---
     try:
         await query.answer()
     except BadRequest as e:
         if "Query is too old" in str(e):
             logging.warning("CallbackQuery 'is too old' to be answered. Continuing...")
         else:
-            raise e # Re-raise other BadRequest errors
+            raise e
 
     user_id = query.from_user.id
-
     if query.data == "form":
         user_data[user_id] = {"step": "ask_name"}
         await query.message.reply_text("سؤال 1️⃣: اتشرف باسمك الثنائي 🙏")
@@ -93,7 +104,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---- Message handler ----
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Standard check for an active conversation
     user_id = update.message.from_user.id
     if user_id not in user_data or user_data[user_id].get("step") is None:
         await update.message.reply_text("ابدأ المحادثة بكتابة /start 😊")
@@ -114,7 +124,8 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data[user_id]["governorate"] = text
         data = user_data[user_id]
         
-        send_email(user_id, data["name"], data["phone"], data["governorate"])
+        # --- NEW: Call the function to update the Google Sheet ---
+        update_sheet(user_id, data["name"], data["phone"], data["governorate"])
         
         FORM_LINK = "https://forms.gle/grkZJ94QsVXbDEab7"
         CHANNEL_LINK = "https://t.me/+eAJ8mUKydElhYTY0"
@@ -129,7 +140,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
         
-        # End the conversation
         user_data.pop(user_id, None)
 
 # ---- Main execution block ----
@@ -142,7 +152,6 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
     logging.info("Starting bot...")
-    # --- SOLUTION 2: Drop old updates on startup ---
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
