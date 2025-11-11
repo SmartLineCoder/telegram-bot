@@ -2,38 +2,40 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler
 from datetime import datetime
 import os
-import json
-from google.oauth2.service_account import Credentials
-import gspread
+import smtplib
+from email.message import EmailMessage
 
-# Load the JSON string from Railway env variable
-service_account_json_str = os.environ["SERVICE_ACCOUNT_JSON"]
+# ---- Telegram bot token from Railway env ----
+TOKEN = os.environ.get("TOKEN")  # set your bot token in Railway env
 
-# Convert it to a Python dict
-SERVICE_ACCOUNT_INFO = json.loads(service_account_json_str)
-# ---- Google Sheet setup ----
-SCOPE = ["https://www.googleapis.com/auth/spreadsheets"]
-CREDS = Credentials.from_service_account_info(SERVICE_ACCOUNT_INFO, scopes=SCOPE)
-client = gspread.authorize(CREDS)
-sheet = client.open("Zyad Telegram Bot Responses").sheet1  # غير الاسم لو الشيت مختلف
-# ---- Telegram bot setup ----
-TOKEN = "ضع_التوكن_هنا"
+# ---- Email setup ----
+EMAIL_ADDRESS = os.environ.get("EMAIL_ADDRESS")  # set in Railway env
+EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")  # app password for Gmail
+
 FORM_LINK = "https://forms.gle/grkZJ94QsVXbDEab7"
 CHANNEL_LINK = "https://t.me/+eAJ8mUKydElhYTY0"
 
 user_data = {}
 
-# تسجيل البيانات في Google Sheet
-def log_to_sheet(user_id, name, phone, governorate):
-    sheet.append_row([
-        user_id,
-        name,
-        phone,
-        governorate,
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    ])
+# ---- Function to send email ----
+def send_email(user_id, name, phone, governorate):
+    msg = EmailMessage()
+    msg['Subject'] = f"New Telegram Bot Submission from {name}"
+    msg['From'] = EMAIL_ADDRESS
+    msg['To'] = EMAIL_ADDRESS
+    msg.set_content(
+        f"User ID: {user_id}\n"
+        f"Name: {name}\n"
+        f"Phone: {phone}\n"
+        f"Governorate: {governorate}\n"
+        f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    )
 
-# ---- أول رسالة ترحيبية ----
+    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+        smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        smtp.send_message(msg)
+
+# ---- First welcome message ----
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
@@ -49,7 +51,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=reply_markup)
 
-# ---- التعامل مع اختيار الزر ----
+# ---- Button click handler ----
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -61,7 +63,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "call":
         await query.message.reply_text("📞 تقدر تتواصل معايا على الرقم: 097554433")
 
-# ---- استقبال الردود ----
+# ---- Message handler ----
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     text = update.message.text
@@ -84,13 +86,15 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif step == "ask_governorate":
         user_data[user_id]["governorate"] = text
-        # تسجيل البيانات
-        log_to_sheet(
+
+        # إرسال البريد
+        send_email(
             user_id,
             user_data[user_id]["name"],
             user_data[user_id]["phone"],
             user_data[user_id]["governorate"]
         )
+
         # إرسال الفورم + القناة
         await update.message.reply_text(
             f"حلو جدًا 😍 املى الفورم ده وهيجيلك لينك قناة الكورس المجاني:\n\n{FORM_LINK}"
@@ -103,11 +107,11 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         user_data[user_id]["step"] = "done"
 
-# ---- إنشاء التطبيق ----
+# ---- Create bot application ----
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(button_handler))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
-# ---- تشغيل البوت ----
+# ---- Run bot ----
 app.run_polling()
