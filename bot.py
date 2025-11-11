@@ -1,62 +1,49 @@
 import os
+import json
 import smtplib
 from email.message import EmailMessage
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters,
-    CallbackQueryHandler,
-)
 from datetime import datetime
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
 
-# ---- Telegram bot setup ----
-TOKEN = os.environ.get("TOKEN")  # Your Telegram bot token
-FORM_LINK = "https://forms.gle/grkZJ94QsVXbDEab7"
-CHANNEL_LINK = "https://t.me/+eAJ8mUKydElhYTY0"
+# ---- Telegram bot token ----
+TOKEN = os.environ.get("TOKEN")  # Store in Railway as TOKEN variable
 
-# Email configuration
-EMAIL_ADDRESS = os.environ.get("EMAIL_ADDRESS")  # e.g., your Gmail
-EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")  # App password if Gmail
+# ---- Email setup ----
+EMAIL_ADDRESS = os.environ.get("EMAIL_ADDRESS")  # Your Gmail address
+EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")  # App password for Gmail
 
+TO_EMAIL = "isma3lawy89@gmail.com"
+
+# ---- User data storage ----
 user_data = {}
 
-# ---- Send email function ----
-def send_email(subject, body, to_address):
+# ---- Helper: Send email ----
+def send_email(user_id, name, phone, governorate):
     msg = EmailMessage()
-    msg["Subject"] = subject
-    msg["From"] = EMAIL_ADDRESS
-    msg["To"] = to_address
-    msg.set_content(body)
-
+    msg['Subject'] = f"New Telegram Bot Submission: {name}"
+    msg['From'] = EMAIL_ADDRESS
+    msg['To'] = TO_EMAIL
+    msg.set_content(
+        f"User ID: {user_id}\n"
+        f"Name: {name}\n"
+        f"Phone: {phone}\n"
+        f"Governorate: {governorate}\n"
+        f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+    )
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
             smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
             smtp.send_message(msg)
     except Exception as e:
         print(f"Error sending email: {e}")
 
-# ---- تسجيل البيانات وارسال الايميل ----
-def log_and_email(user_id, name, phone, governorate):
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    body = (
-        f"New Telegram Bot Response:\n\n"
-        f"User ID: {user_id}\n"
-        f"Name: {name}\n"
-        f"Phone: {phone}\n"
-        f"Governorate: {governorate}\n"
-        f"Time: {timestamp}\n"
-    )
-    send_email("New Telegram Bot Response", body, "isma3lawy89@gmail.com")
-
-# ---- أول رسالة ترحيبية ----
+# ---- Start command ----
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
             InlineKeyboardButton("املى الفورم", callback_data="form"),
-            InlineKeyboardButton("الاتصال بيا", callback_data="call"),
+            InlineKeyboardButton("الاتصال بيا", callback_data="call")
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -67,7 +54,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=reply_markup)
 
-# ---- التعامل مع اختيار الزر ----
+# ---- Button callback ----
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -79,7 +66,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == "call":
         await query.message.reply_text("📞 تقدر تتواصل معايا على الرقم: 097554433")
 
-# ---- استقبال الردود ----
+# ---- Message handler ----
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
     text = update.message.text
@@ -94,22 +81,18 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_data[user_id]["name"] = text
         user_data[user_id]["step"] = "ask_phone"
         await update.message.reply_text("سؤال 2️⃣: رقم تلفونك 📱")
-
     elif step == "ask_phone":
         user_data[user_id]["phone"] = text
         user_data[user_id]["step"] = "ask_governorate"
         await update.message.reply_text("سؤال 3️⃣: من أي محافظة؟ 🌍")
-
     elif step == "ask_governorate":
         user_data[user_id]["governorate"] = text
-        # ارسال الايميل
-        log_and_email(
-            user_id,
-            user_data[user_id]["name"],
-            user_data[user_id]["phone"],
-            user_data[user_id]["governorate"],
-        )
-        # إرسال الفورم + القناة
+        data = user_data[user_id]
+        # Send email after collecting all info
+        send_email(user_id, data["name"], data["phone"], data["governorate"])
+        # Send links to user
+        FORM_LINK = "https://forms.gle/grkZJ94QsVXbDEab7"
+        CHANNEL_LINK = "https://t.me/+eAJ8mUKydElhYTY0"
         await update.message.reply_text(
             f"حلو جدًا 😍 املى الفورم ده وهيجيلك لينك قناة الكورس المجاني:\n\n{FORM_LINK}"
         )
@@ -117,15 +100,14 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"بعد ما تملأ الفورم ✍️، ادخل هنا 👇\n{CHANNEL_LINK}\n\n"
             "اعمل **انضمام** وتابع القناة، وهيوصلك عليها لينك الكورس المجاني 🎓\n"
             "ومتنساش تعمل متابعة على كل السوشيال ميديا 😉❤️",
-            parse_mode="Markdown",
+            parse_mode="Markdown"
         )
         user_data[user_id]["step"] = "done"
 
-# ---- إنشاء التطبيق ----
+# ---- Create and run bot ----
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(button_handler))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
 
-# ---- تشغيل البوت ----
 app.run_polling()
