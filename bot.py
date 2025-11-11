@@ -5,8 +5,6 @@ import gspread
 
 
 import os
-print(os.environ.keys())
-
 import json
 from google.oauth2.service_account import Credentials
 
