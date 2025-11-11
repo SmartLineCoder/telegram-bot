@@ -8,7 +8,12 @@ import os
 import json
 from google.oauth2.service_account import Credentials
 
-SERVICE_ACCOUNT_INFO = json.loads(os.environ["SERVICE_ACCOUNT_JSON"])
+# Load the JSON string from Railway env variable
+service_account_json_str = os.environ["SERVICE_ACCOUNT_JSON"]
+
+# Convert it to a Python dict
+SERVICE_ACCOUNT_INFO = json.loads(service_account_json_str)
+
 SCOPE = ["https://www.googleapis.com/auth/spreadsheets"]
 CREDS = Credentials.from_service_account_info(SERVICE_ACCOUNT_INFO, scopes=SCOPE)
 
